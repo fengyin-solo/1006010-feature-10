@@ -1,6 +1,25 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import {
+  BAGGAGE_KEY,
+  applyBaggageAction,
+} from './baggage-service'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+
+// 行李装卸的汇总、去重、偏差门禁、状态机与待办回写都在专用服务里，页面同源使用。
+export {
+  baggageBoard,
+  baggageRows,
+  confirmFlight,
+  flightBaggageTodos,
+  isDuplicateRow,
+  PIECE_TOLERANCE,
+  RATE_TOLERANCE,
+  registerBaggage,
+  returnFlight,
+  submitFlight,
+} from './baggage-service'
+export type { BaggageDraft, FlightBaggageTodo } from './baggage-service'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -28,8 +47,12 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
-export function runAction(key: string, id: number, action: string): ActionResult {
+export function runAction(key: string, id: number, action: string, reason = ''): ActionResult {
   const meta = moduleMeta(key)
+  // 行李装卸走专用状态机：逐级流转、越级挡回、已装机不可逆、装机偏差门禁。
+  if (key === BAGGAGE_KEY) {
+    return applyBaggageAction(id, action, reason)
+  }
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
